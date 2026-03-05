@@ -901,8 +901,157 @@ button, input, select, textarea {
 .btn-logout:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.4); }
 .btn-logout svg { width: .9rem; height: .9rem; }
 
+/* ── Profile Dropdown ──────────────────────────────────── */
+.profile-dropdown-wrap {
+  position: relative;
+}
+
+.profile-trigger {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .35rem .7rem .35rem .35rem;
+  border-radius: 9999px;
+  background: var(--primary-light);
+  border: 2px solid rgba(124,58,237,.15);
+  font-weight: 700; font-size: .85rem; color: var(--primary);
+  cursor: pointer;
+  transition: all .2s ease;
+  font-family: var(--font-body);
+}
+.profile-trigger:hover {
+  border-color: rgba(124,58,237,.4);
+  box-shadow: 0 4px 16px rgba(124,58,237,.12);
+}
+
+.profile-chevron {
+  transition: transform .25s ease;
+  opacity: .6;
+}
+.profile-trigger[aria-expanded="true"] .profile-chevron {
+  transform: rotate(180deg);
+}
+
+/* Dropdown panel */
+.profile-dropdown {
+  position: absolute; top: calc(100% + .5rem); right: 0;
+  min-width: 16rem; width: max-content;
+  background: #fff;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 40px rgba(0,0,0,.12), 0 2px 8px rgba(124,58,237,.08);
+  padding: .5rem;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(.97);
+  transition: opacity .2s ease, transform .2s ease, visibility .2s;
+  pointer-events: none;
+}
+.profile-dropdown.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Credit balance row */
+.dd-credit-row {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .75rem .75rem;
+  border-radius: .5rem;
+  background: linear-gradient(135deg, rgba(124,58,237,.06), rgba(245,158,11,.06));
+}
+.dd-credit-icon {
+  width: 2.25rem; height: 2.25rem;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.dd-credit-info {
+  display: flex; flex-direction: column; gap: .1rem;
+}
+.dd-credit-label {
+  font-size: .7rem; font-weight: 600;
+  color: var(--muted-fg); text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.dd-credit-value {
+  font-family: var(--font-display);
+  font-size: 1.15rem; font-weight: 700;
+  color: var(--primary);
+  min-width: 3rem;
+}
+.dd-credit-value.loaded {
+  animation: ddCreditPop .3s ease;
+}
+@keyframes ddCreditPop {
+  0%   { transform: scale(.85); opacity: .5; }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Inline loading shimmer */
+.dd-credit-loading {
+  display: inline-block;
+  width: 3rem; height: 1rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--muted) 25%, #f3f0ff 50%, var(--muted) 75%);
+  background-size: 200%;
+  animation: shimmer 1.5s infinite;
+  vertical-align: middle;
+}
+
+/* Divider */
+.dd-divider {
+  height: 1px;
+  background: var(--border);
+  margin: .35rem 0;
+}
+
+/* Menu items */
+.dd-item {
+  display: flex; align-items: center; gap: .6rem;
+  width: 100%; padding: .6rem .75rem;
+  border: none; background: none;
+  border-radius: .5rem;
+  font-family: var(--font-body);
+  font-weight: 600; font-size: .875rem;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: all .15s ease;
+  text-decoration: none;
+}
+.dd-item:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.dd-item svg {
+  opacity: .5;
+  transition: opacity .15s;
+}
+.dd-item:hover svg { opacity: 1; }
+
+.dd-item-admin {
+  color: var(--primary);
+}
+.dd-item-admin svg { color: var(--primary); opacity: .7; }
+
+.dd-item-danger {
+  color: var(--destructive);
+}
+.dd-item-danger:hover {
+  background: rgba(239,68,68,.08);
+  color: var(--destructive);
+}
+.dd-item-danger svg { color: var(--destructive); }
+
+/* Empty admin slot — no space when empty */
+.dd-admin-slot:empty { display: none; }
+
 @media (max-width: 640px) {
   .auth-card { padding: 1.5rem 1.25rem 1.25rem; }
   .auth-bg { padding: 1rem; }
   .nav-username { display: none; }
+  .profile-dropdown { right: -1rem; min-width: 14rem; }
 }
