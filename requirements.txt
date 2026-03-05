@@ -1,5 +1,6 @@
 Flask==3.0.0
 flask-cors==4.0.0
+Flask-Limiter==3.8.0
 google-generativeai==0.8.3
 python-dotenv==1.0.1
 requests==2.32.3
@@ -20,3 +21,7 @@ psycopg2-binary==2.9.9
 # Cloud storage (optional)
 boto3>=1.34.0                # AWS S3
 azure-storage-blob>=12.22.0  # Azure Blob
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
