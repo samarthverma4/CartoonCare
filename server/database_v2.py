@@ -55,7 +55,17 @@ def get_db():
 
 
 def _execute(conn, sql, params=None):
-    """Execute SQL, translating placeholders for the active backend."""
+    """Execute a SQL statement, automatically translating ``?``
+    placeholders to ``%s`` when running against PostgreSQL.
+
+    Args:
+        conn: Active database connection.
+        sql: SQL statement (use ``?`` for parameter placeholders).
+        params: Optional tuple/list of query parameters.
+
+    Returns:
+        A database cursor after execution.
+    """
     if USE_POSTGRES:
         # Convert ? to %s for psycopg2
         sql = sql.replace('?', '%s')
@@ -68,6 +78,7 @@ def _execute(conn, sql, params=None):
 
 
 def _fetchone(conn, sql, params=None):
+    """Execute *sql* and return the first row as a dict, or ``None``."""
     cur = _execute(conn, sql, params)
     if USE_POSTGRES:
         cols = [desc[0] for desc in cur.description] if cur.description else []
@@ -78,6 +89,7 @@ def _fetchone(conn, sql, params=None):
 
 
 def _fetchall(conn, sql, params=None):
+    """Execute *sql* and return all rows as a list of dicts."""
     cur = _execute(conn, sql, params)
     if USE_POSTGRES:
         cols = [desc[0] for desc in cur.description] if cur.description else []
@@ -99,6 +111,7 @@ def init_db():
                 name TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 salt TEXT NOT NULL,
+                is_admin INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now')),
                 last_login TEXT
             )
@@ -179,12 +192,34 @@ def init_db():
                 success INTEGER NOT NULL DEFAULT 1,
                 duration_ms INTEGER,
                 tokens_used INTEGER DEFAULT 0,
+                credits_used REAL DEFAULT 0.0,
                 error_message TEXT,
                 user_id INTEGER,
                 story_id INTEGER,
                 created_at TEXT DEFAULT (datetime('now'))
             )
         ''')
+
+        # Credit configuration table (admin-managed)
+        _execute(conn, '''
+            CREATE TABLE IF NOT EXISTS credit_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_key TEXT UNIQUE NOT NULL,
+                config_value TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+
+        # Insert default credit config if not exists
+        existing = _fetchone(conn,
+            "SELECT id FROM credit_config WHERE config_key = 'total_budget'")
+        if not existing:
+            _execute(conn,
+                "INSERT INTO credit_config (config_key, config_value) VALUES ('total_budget', '1000')")
+            _execute(conn,
+                "INSERT INTO credit_config (config_key, config_value) VALUES ('flux2pro_cost_per_image', '0.05')")
+            _execute(conn,
+                "INSERT INTO credit_config (config_key, config_value) VALUES ('gemini_cost_per_call', '0.01')")
 
         # ── Migrations: add missing columns to existing SQLite tables ──
         if not USE_POSTGRES:
@@ -196,6 +231,8 @@ def init_db():
                 ('stories', 'generation_time_ms',   'INTEGER DEFAULT 0'),
                 ('api_logs', 'user_id',             'INTEGER'),
                 ('api_logs', 'story_id',            'INTEGER'),
+                ('api_logs', 'credits_used',        'REAL DEFAULT 0.0'),
+                ('users',   'is_admin',             'INTEGER DEFAULT 0'),
             ]
             cur = conn.cursor()
             for table, column, col_def in migrations:
@@ -220,6 +257,7 @@ def _row_to_dict(row) -> Optional[dict]:
 
 
 def row_to_story(row) -> Optional[dict]:
+    """Convert a raw story DB row into an API-friendly dict."""
     d = _row_to_dict(row)
     if d is None:
         return None
@@ -235,6 +273,7 @@ def row_to_story(row) -> Optional[dict]:
 
 
 def row_to_user(row) -> Optional[dict]:
+    """Convert a raw user DB row into an API-friendly dict (strips password)."""
     d = _row_to_dict(row)
     if d is None:
         return None
@@ -246,6 +285,7 @@ def row_to_user(row) -> Optional[dict]:
 
 
 def row_to_child(row) -> Optional[dict]:
+    """Convert a raw child DB row into an API-friendly dict."""
     d = _row_to_dict(row)
     if d is None:
         return None
@@ -259,6 +299,7 @@ def row_to_child(row) -> Optional[dict]:
 # ── User operations ──────────────────────────────────────────────────
 
 def create_user(email: str, name: str, password_hash: str, salt: str) -> Optional[dict]:
+    """Insert a new user and return the created user dict."""
     with get_db() as conn:
         _execute(conn,
             'INSERT INTO users (email, name, password_hash, salt) VALUES (?, ?, ?, ?)',
@@ -269,18 +310,21 @@ def create_user(email: str, name: str, password_hash: str, salt: str) -> Optiona
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
+    """Look up a user by email. Returns full row including password_hash."""
     with get_db() as conn:
         row = _fetchone(conn, 'SELECT * FROM users WHERE email = ?', (email,))
         return _row_to_dict(row)
 
 
 def get_user_by_id(user_id: int) -> Optional[dict]:
+    """Look up a user by primary key, stripping sensitive fields."""
     with get_db() as conn:
         row = _fetchone(conn, 'SELECT * FROM users WHERE id = ?', (user_id,))
         return row_to_user(row)  # type: ignore[return-value]
 
 
 def update_last_login(user_id: int):
+    """Set the user's ``last_login`` timestamp to now (UTC)."""
     with get_db() as conn:
         now = datetime.now(timezone.utc).isoformat()
         _execute(conn, 'UPDATE users SET last_login = ? WHERE id = ?', (now, user_id))
@@ -491,16 +535,19 @@ def get_child_story_history(child_id: int) -> list:
 def log_api_call(api_name: str, model: str = '', success: bool = True,
                  duration_ms: int = 0, tokens_used: int = 0,
                  error_message: str = '', user_id: Optional[int] = None,
-                 story_id: Optional[int] = None):
+                 story_id: Optional[int] = None, credits_used: float = 0.0):
     try:
+        # Auto-calculate credits if not provided and call succeeded
+        if credits_used == 0.0 and success:
+            credits_used = get_credit_cost(api_name)
         with get_db() as conn:
             _execute(conn,
                 '''INSERT INTO api_logs
                    (api_name, model, success, duration_ms, tokens_used,
-                    error_message, user_id, story_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                    error_message, user_id, story_id, credits_used)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (api_name, model, int(success), duration_ms, tokens_used,
-                 error_message, user_id, story_id)
+                 error_message, user_id, story_id, credits_used)
             )
     except Exception as e:
         logger.error(f'Failed to log API call: {e}')
@@ -517,5 +564,222 @@ def get_api_usage_stats(days: int = 7) -> list:
                FROM api_logs
                GROUP BY api_name
                ORDER BY total_calls DESC'''
+        )
+        return [_row_to_dict(r) for r in rows]
+
+
+# ── Credit configuration operations ──────────────────────────────────
+
+def get_credit_config() -> dict:
+    """Get all credit configuration as a dict."""
+    with get_db() as conn:
+        rows = _fetchall(conn, 'SELECT config_key, config_value FROM credit_config')
+        result = {}
+        for r in rows:
+            d = _row_to_dict(r)
+            if d:
+                result[d['config_key']] = d['config_value']
+        return result
+
+
+def set_credit_config(key: str, value: str):
+    """Update a credit configuration value."""
+    with get_db() as conn:
+        existing = _fetchone(conn,
+            'SELECT id FROM credit_config WHERE config_key = ?', (key,))
+        if existing:
+            _execute(conn,
+                "UPDATE credit_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = ?",
+                (value, key))
+        else:
+            _execute(conn,
+                'INSERT INTO credit_config (config_key, config_value) VALUES (?, ?)',
+                (key, value))
+
+
+def get_credit_cost(api_name: str) -> float:
+    """Get the credit cost for a given API call."""
+    config = get_credit_config()
+    cost_map = {
+        'flux2pro': float(config.get('flux2pro_cost_per_image', '0.05')),
+        'gemini': float(config.get('gemini_cost_per_call', '0.01')),
+    }
+    return cost_map.get(api_name, 0.0)
+
+
+# ── Credit usage queries (admin) ─────────────────────────────────────
+
+def get_total_credits_used() -> dict:
+    """Get total credits used across all APIs."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT api_name,
+                      COUNT(*) as total_calls,
+                      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+                      SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
+                      COALESCE(SUM(CASE WHEN success = 1 THEN credits_used ELSE 0 END), 0) as total_credits
+               FROM api_logs
+               GROUP BY api_name'''
+        )
+        result: dict = {}
+        grand_total = 0.0
+        for r in rows:
+            d = _row_to_dict(r) or {}
+            if d.get('api_name'):
+                result[d['api_name']] = d
+                grand_total += float(d.get('total_credits', 0))
+        return {'by_api': result, 'grand_total': grand_total}
+
+
+def get_credit_usage_history(days: int = 30) -> list:
+    """Get daily credit usage history."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT DATE(created_at) as date,
+                      api_name,
+                      COUNT(*) as calls,
+                      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+                      COALESCE(SUM(CASE WHEN success = 1 THEN credits_used ELSE 0 END), 0) as credits
+               FROM api_logs
+               WHERE created_at >= datetime('now', ?)
+               GROUP BY DATE(created_at), api_name
+               ORDER BY date DESC, api_name''',
+            (f'-{days} days',)
+        )
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_credit_usage_by_user() -> list:
+    """Get credit usage grouped by user (admin view)."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT al.user_id,
+                      COALESCE(u.name, 'Anonymous') as user_name,
+                      COALESCE(u.email, 'N/A') as email,
+                      COUNT(*) as total_calls,
+                      SUM(CASE WHEN al.success = 1 THEN 1 ELSE 0 END) as successes,
+                      COALESCE(SUM(CASE WHEN al.success = 1 THEN al.credits_used ELSE 0 END), 0) as total_credits,
+                      COUNT(DISTINCT DATE(al.created_at)) as active_days,
+                      MAX(al.created_at) as last_activity
+               FROM api_logs al
+               LEFT JOIN users u ON al.user_id = u.id
+               GROUP BY al.user_id
+               ORDER BY total_credits DESC'''
+        )
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_hourly_usage_today() -> list:
+    """Get hourly usage breakdown for today."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT strftime('%H', created_at) as hour,
+                      api_name,
+                      COUNT(*) as calls,
+                      COALESCE(SUM(CASE WHEN success = 1 THEN credits_used ELSE 0 END), 0) as credits
+               FROM api_logs
+               WHERE DATE(created_at) = DATE('now')
+               GROUP BY hour, api_name
+               ORDER BY hour'''
+        )
+        return [_row_to_dict(r) for r in rows]
+
+
+# ── Credit usage queries (per user) ──────────────────────────────────
+
+def get_user_credit_usage(user_id: int) -> dict:
+    """Get credit usage for a specific user."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT api_name,
+                      COUNT(*) as total_calls,
+                      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+                      SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
+                      COALESCE(SUM(CASE WHEN success = 1 THEN credits_used ELSE 0 END), 0) as total_credits
+               FROM api_logs
+               WHERE user_id = ?
+               GROUP BY api_name''',
+            (user_id,)
+        )
+        result: dict = {}
+        grand_total = 0.0
+        for r in rows:
+            d = _row_to_dict(r) or {}
+            if d.get('api_name'):
+                result[d['api_name']] = d
+                grand_total += float(d.get('total_credits', 0))
+        return {'by_api': result, 'grand_total': grand_total}
+
+
+def get_user_credit_history(user_id: int, days: int = 30) -> list:
+    """Get daily credit usage history for a specific user."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT DATE(created_at) as date,
+                      api_name,
+                      COUNT(*) as calls,
+                      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+                      COALESCE(SUM(CASE WHEN success = 1 THEN credits_used ELSE 0 END), 0) as credits
+               FROM api_logs
+               WHERE user_id = ? AND created_at >= datetime('now', ?)
+               GROUP BY DATE(created_at), api_name
+               ORDER BY date DESC, api_name''',
+            (user_id, f'-{days} days')
+        )
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_user_story_credits(user_id: int, limit: int = 20) -> list:
+    """Get per-story credit breakdown for a user."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT s.id as story_id,
+                      s.story_title,
+                      s.child_name,
+                      s.created_at,
+                      COUNT(al.id) as api_calls,
+                      COALESCE(SUM(CASE WHEN al.success = 1 THEN al.credits_used ELSE 0 END), 0) as credits_used
+               FROM stories s
+               LEFT JOIN api_logs al ON al.story_id = s.id
+               WHERE s.user_id = ?
+               GROUP BY s.id
+               ORDER BY s.id DESC
+               LIMIT ?''',
+            (user_id, limit)
+        )
+        return [_row_to_dict(r) for r in rows]
+
+
+# ── Admin operations ─────────────────────────────────────────────────
+
+def is_user_admin(user_id: int) -> bool:
+    """Check if a user has admin privileges."""
+    with get_db() as conn:
+        row = _fetchone(conn, 'SELECT is_admin FROM users WHERE id = ?', (user_id,))
+        if row:
+            d = _row_to_dict(row) or {}
+            return bool(d.get('is_admin', 0))
+        return False
+
+
+def set_user_admin(user_id: int, is_admin: bool = True):
+    """Set admin status for a user."""
+    with get_db() as conn:
+        _execute(conn, 'UPDATE users SET is_admin = ? WHERE id = ?',
+                 (1 if is_admin else 0, user_id))
+
+
+def get_all_users_summary() -> list:
+    """Get summary of all users for admin view."""
+    with get_db() as conn:
+        rows = _fetchall(conn,
+            '''SELECT u.id, u.name, u.email, u.is_admin, u.created_at, u.last_login,
+                      COUNT(DISTINCT s.id) as story_count,
+                      COALESCE(SUM(CASE WHEN al.success = 1 THEN al.credits_used ELSE 0 END), 0) as total_credits
+               FROM users u
+               LEFT JOIN stories s ON s.user_id = u.id
+               LEFT JOIN api_logs al ON al.user_id = u.id
+               GROUP BY u.id
+               ORDER BY u.id DESC'''
         )
         return [_row_to_dict(r) for r in rows]
