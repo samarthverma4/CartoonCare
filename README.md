@@ -25,8 +25,9 @@ CartoonCare turns scary medical experiences into magical adventures. Parents ent
 | Layer | Technology |
 |-------|-----------|
 | Frontend | HTML, CSS, JavaScript (Vanilla) |
-| Backend | Python, Flask |
+| Backend | Python, Flask (Blueprint architecture) |
 | Database | SQLite (with PostgreSQL support) |
+| Rate Limiting | Flask-Limiter (200/day global, 10/min auth, 5/min stories) |
 | Authentication | JWT (HS256), PBKDF2 password hashing |
 | AI (Text) | Google Gemini 2.5 Flash |
 | AI (Images) | Flux 2 Pro (Black Forest Labs via Azure AI) |
@@ -45,22 +46,39 @@ cartooncare/
 │   ├── create.html             # Create a new story (auth-guarded)
 │   ├── story.html              # Story viewer
 │   ├── login.html              # Login / Signup page
+│   ├── admin-credits.html      # Admin credit dashboard
+│   ├── my-credits.html         # User credit dashboard
 │   ├── css/
-│   │   └── styles.css          # Full design system + auth styles
+│   │   ├── styles.css          # Full design system + auth styles
+│   │   └── dashboard.css       # Credit dashboard styles
 │   └── js/
 │       ├── home.js             # Library logic + auth headers
 │       ├── create.js           # Story generation form + auth headers
 │       ├── story.js            # Viewer, narration, translation + auth headers
-│       └── auth.js             # Login/signup form handling, token management
+│       ├── auth.js             # Login/signup form handling, token management
+│       ├── admin-credits.js    # Admin credit management
+│       ├── my-credits.js       # User credit view
+│       └── nav-profile.js      # Dynamic nav bar (avatar + logout)
 ├── server/
-│   ├── main.py                 # Flask app + all API routes
+│   ├── main.py                 # Flask app factory, middleware, static serving
 │   ├── auth.py                 # JWT auth, password hashing, decorators
-│   ├── database.py             # SQLite CRUD layer (legacy)
-│   ├── database_v2.py          # Enhanced DB layer (PostgreSQL + SQLite)
+│   ├── database_v2.py          # DB layer (PostgreSQL + SQLite fallback)
 │   ├── cloud_storage.py        # Storage abstraction (Local / S3 / Azure)
-│   ├── content_safety.py       # Content moderation utilities
-│   ├── monitoring.py           # Logging and monitoring
-│   └── prompt_manager.py       # AI prompt templates
+│   ├── content_safety.py       # Content moderation & input validation
+│   ├── monitoring.py           # Structured logging and API usage tracking
+│   ├── prompt_manager.py       # AI prompt templates
+│   └── routes/                 # Flask Blueprints
+│       ├── auth.py             # /api/auth/* — register, login, profile
+│       ├── stories.py          # /api/stories/*, /api/children/* — CRUD + generation
+│       ├── health.py           # /api/health, /api/admin/stats, /api/storage/*
+│       └── credits.py          # /api/admin/credits/*, /api/credits/my/*
+├── tests/
+│   ├── conftest.py             # Shared fixtures (app, client, auth_header)
+│   ├── test_auth.py            # 16 auth tests (password, JWT, routes)
+│   └── test_content_safety.py  # 9 content safety tests
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # Lint (flake8) + test (pytest) on push/PR
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -114,6 +132,38 @@ Open **http://localhost:5002** in your browser.
 
 ---
 
+## 🧪 Testing
+
+The project includes 26 unit and integration tests covering authentication, JWT validation, and content safety.
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage report
+python -m pytest tests/ -v --cov=server --cov-report=term-missing
+```
+
+**Test suites:**
+- `test_auth.py` — Password hashing, JWT create/decode/tamper, registration validation, route-level register/login/protected endpoints
+- `test_content_safety.py` — Input validation (name, age, blocked content, prompt injection), output moderation (blocked terms, age-appropriate language)
+
+CI runs automatically via GitHub Actions on every push and pull request (`.github/workflows/ci.yml`).
+
+---
+
+## 🛡️ Security & Rate Limiting
+
+- **Rate Limiting** — Flask-Limiter protects all endpoints:
+  - Global: 200 requests/day, 60 requests/hour per IP
+  - Auth routes (`/api/auth/*`): 10 requests/minute
+  - Story routes (`/api/stories/*`): 5 requests/minute
+- **Input Validation** — All user inputs (child name, age, condition, gender) are validated server-side before reaching the AI
+- **Content Safety** — Blocked terms filter, prompt injection detection, age-appropriate language checks, and AI output moderation
+- **Secure Auth** — PBKDF2 + random salt password hashing, JWT with 72-hour expiry
+
+---
+
 ## 🔐 Authentication
 
 CartoonCare includes a full authentication system:
@@ -164,3 +214,15 @@ CartoonCare includes a full authentication system:
 ## 📄 License
 
 This project was built as a 2nd Year AIML Mini Project.
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Commit your changes: `git commit -m 'feat: add my feature'`
+4. Push to the branch: `git push origin feature/my-feature`
+5. Open a Pull Request against `main`
+
+Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.

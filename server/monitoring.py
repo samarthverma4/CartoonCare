@@ -212,6 +212,7 @@ class APIUsageCounter:
 
     def record(self, api_name: str, success: bool = True,
                tokens: int = 0, cost_usd: float = 0.0):
+        """Record a single API call for today's usage counters."""
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         key = f'{today}:{api_name}'
 
@@ -236,10 +237,12 @@ class APIUsageCounter:
         self._save()
 
     def get_today_stats(self):
+        """Return usage counters scoped to today (UTC)."""
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         return {k: v for k, v in self.counts.items() if k.startswith(today)}
 
     def get_all_stats(self):
+        """Return all recorded usage stats across all days."""
         return self.counts
 
 

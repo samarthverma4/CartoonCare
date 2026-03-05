@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Credits — Cartoon Care</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/dashboard.css" />
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">
+      <div class="nav-logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+        </svg>
+      </div>
+      Cartoon Care
+    </a>
+    <div class="nav-auth" id="nav-auth"></div>
+  </div>
+</nav>
+
+<!-- DASHBOARD -->
+<main class="dashboard" id="dashboard">
+
+  <!-- Breadcrumb -->
+  <div class="dashboard-breadcrumb">
+    <a href="/">Home</a>
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+    <span>My Credits</span>
+  </div>
+
+  <div class="dashboard-header">
+    <h1>
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        style="vertical-align: middle; color: var(--accent); margin-right: .5rem;">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+      My Story Credits
+    </h1>
+    <p id="user-greeting">Track your story generation credit usage</p>
+  </div>
+
+  <!-- ── Stat Cards ──────────────────────────────────── -->
+  <div class="stats-row" id="stats-row">
+    <div class="dash-skeleton"></div>
+    <div class="dash-skeleton"></div>
+    <div class="dash-skeleton"></div>
+    <div class="dash-skeleton"></div>
+  </div>
+
+  <div class="dashboard-grid-2">
+    <!-- ── Usage History Chart ────────────────────────── -->
+    <div class="dashboard-section" id="history-section">
+      <div class="section-header">
+        <div>
+          <h2>My Usage History</h2>
+          <p class="section-desc">Your daily credit consumption</p>
+        </div>
+        <button class="btn-refresh" id="refresh-btn" onclick="loadAll()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+      <div class="chart-container" id="history-chart">
+        <div class="dash-skeleton" style="height:200px"></div>
+      </div>
+      <div class="chart-legend">
+        <div class="chart-legend-item"><div class="chart-legend-dot flux"></div> Image Generation</div>
+        <div class="chart-legend-item"><div class="chart-legend-dot gemini"></div> Story Generation</div>
+      </div>
+    </div>
+
+    <!-- ── API Usage Breakdown ────────────────────────── -->
+    <div class="dashboard-section" id="breakdown-section">
+      <h2>Credit Breakdown</h2>
+      <p class="section-desc">How your credits are being used</p>
+      <div id="api-breakdown">
+        <div class="dash-skeleton" style="height:200px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Story Credits Table ─────────────────────────── -->
+  <div class="dashboard-section" id="stories-section">
+    <div class="section-header">
+      <div>
+        <h2>Story Generation Credits</h2>
+        <p class="section-desc">Credits used for each story you've created</p>
+      </div>
+    </div>
+    <div class="data-table-wrap">
+      <table class="data-table" id="stories-table">
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Created</th>
+            <th>API Calls</th>
+            <th>Credits Used</th>
+          </tr>
+        </thead>
+        <tbody id="stories-tbody">
+          <tr><td colspan="4"><div class="dash-skeleton" style="height:60px"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- LOGIN REQUIRED -->
+<div class="dashboard" id="login-required" style="display:none">
+  <div class="empty-state" style="padding:6rem 1.5rem">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5">
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+      <polyline points="10 17 15 12 10 7"/>
+      <line x1="15" y1="12" x2="3" y2="12"/>
+    </svg>
+    <p>Login Required</p>
+    <p class="hint">Please log in to view your credit usage.</p>
+    <a href="/login" class="btn btn-primary btn-sm" style="margin-top:1.5rem">Login</a>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/js/nav-profile.js"></script>
+<script src="/js/my-credits.js"></script>
+</body>
+</html>
