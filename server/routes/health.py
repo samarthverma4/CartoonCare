@@ -11,7 +11,7 @@ from typing import Any
 
 import database_v2 as db
 from auth import login_required
-from monitoring import usage_counter
+from monitoring import usage_counter, perf_tracker
 
 logger = logging.getLogger('brave_story.routes.health')
 
@@ -31,8 +31,16 @@ def init_health_bp(image_storage):
 
 @health_bp.route('/api/health', methods=['GET'])
 def health_check():
-    """Return a simple health status (useful for uptime monitors / CI)."""
-    return jsonify({'status': 'ok', 'timestamp': int(time.time())})
+    """Return health status with uptime, memory, and Python version."""
+    metrics = perf_tracker.get_metrics()
+    return jsonify({
+        'status': 'ok',
+        'timestamp': int(time.time()),
+        'uptime': metrics['uptime_human'],
+        'uptime_seconds': metrics['uptime_seconds'],
+        'memory_mb': metrics['memory_mb'],
+        'python_version': metrics['python_version'],
+    })
 
 
 # ── Admin stats ──────────────────────────────────────────────────────
@@ -40,10 +48,11 @@ def health_check():
 @health_bp.route('/api/admin/stats', methods=['GET'])
 @login_required
 def get_stats():
-    """Return aggregated API usage statistics for the admin dashboard."""
+    """Return aggregated API usage and performance statistics for admin."""
     return jsonify({
         'api_usage': db.get_api_usage_stats(),
         'today': usage_counter.get_today_stats(),
+        'performance': perf_tracker.get_metrics(),
     })
 
 

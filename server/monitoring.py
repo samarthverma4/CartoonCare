@@ -5,10 +5,12 @@ Structured logging for AI generation, API usage, errors, and performance metrics
 """
 
 import os
+import sys
 import time
 import json
 import logging
 import logging.handlers
+from collections import deque
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
@@ -18,6 +20,9 @@ from flask import request, g
 # ── Log directory setup ──────────────────────────────────────────────
 LOG_DIR = Path(__file__).parent.parent / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
+
+# ── Server start time (for uptime) ──────────────────────────────────
+SERVER_START_TIME = time.time()
 
 # ── Structured JSON formatter ────────────────────────────────────────
 
@@ -117,6 +122,9 @@ def log_response(response):
     """Call this in Flask after_request."""
     duration_ms = int((time.time() - getattr(g, 'request_start', time.time())) * 1000)
     user_id = getattr(g, 'user_id', None)
+
+    is_error = response.status_code >= 400
+    perf_tracker.record_request(is_error=is_error)
 
     api_logger.info(
         f'{request.method} {request.path} → {response.status_code} ({duration_ms}ms)',
@@ -248,3 +256,97 @@ class APIUsageCounter:
 
 # Singleton counter
 usage_counter = APIUsageCounter()
+
+
+# ── Performance Metrics ─────────────────────────────────────────────
+
+class PerformanceTracker:
+    """Track generation timing breakdowns and error rates."""
+
+    def __init__(self, max_history=200):
+        self._generation_times = deque(maxlen=max_history)
+        self._error_counts = {'total': 0, 'by_type': {}}
+        self._request_count = 0
+        self._error_request_count = 0
+
+    def record_generation(self, story_id, gemini_ms=0, flux_ms=0, total_ms=0, pages=0):
+        self._generation_times.append({
+            'story_id': story_id,
+            'gemini_ms': gemini_ms,
+            'flux_ms': flux_ms,
+            'total_ms': total_ms,
+            'pages': pages,
+            'ts': datetime.now(timezone.utc).isoformat(),
+        })
+
+    def record_error(self, error_type):
+        self._error_counts['total'] += 1
+        self._error_counts['by_type'][error_type] = \
+            self._error_counts['by_type'].get(error_type, 0) + 1
+
+    def record_request(self, is_error=False):
+        self._request_count += 1
+        if is_error:
+            self._error_request_count += 1
+
+    def get_metrics(self):
+        uptime_s = int(time.time() - SERVER_START_TIME)
+        mem_mb = _get_memory_mb()
+
+        # Compute generation averages
+        times = list(self._generation_times)
+        avg_gemini = avg_flux = avg_total = 0
+        if times:
+            avg_gemini = int(sum(t['gemini_ms'] for t in times) / len(times))
+            avg_flux = int(sum(t['flux_ms'] for t in times) / len(times))
+            avg_total = int(sum(t['total_ms'] for t in times) / len(times))
+
+        error_rate = 0.0
+        if self._request_count > 0:
+            error_rate = round(self._error_request_count / self._request_count * 100, 2)
+
+        return {
+            'uptime_seconds': uptime_s,
+            'uptime_human': _format_uptime(uptime_s),
+            'memory_mb': mem_mb,
+            'python_version': sys.version.split()[0],
+            'total_requests': self._request_count,
+            'error_rate_pct': error_rate,
+            'errors': self._error_counts,
+            'generation_avg': {
+                'gemini_ms': avg_gemini,
+                'flux_ms': avg_flux,
+                'total_ms': avg_total,
+                'sample_size': len(times),
+            },
+            'recent_generations': list(times)[-10:],
+        }
+
+
+def _get_memory_mb():
+    try:
+        import resource
+        return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
+    except ImportError:
+        pass
+    try:
+        import psutil
+        return round(psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024), 1)
+    except ImportError:
+        return 0
+
+
+def _format_uptime(seconds):
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    parts = []
+    if days: parts.append(f'{days}d')
+    if hours: parts.append(f'{hours}h')
+    if minutes: parts.append(f'{minutes}m')
+    parts.append(f'{secs}s')
+    return ' '.join(parts)
+
+
+# Singleton performance tracker
+perf_tracker = PerformanceTracker()
