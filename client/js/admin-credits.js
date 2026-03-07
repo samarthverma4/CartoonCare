@@ -53,6 +53,8 @@ function showToast(msg, type = 'success') {
   loadHistory();
   loadUsers();
   loadConfig();
+  loadFeedback();
+  loadPerformance();
 })();
 
 async function loadAll() {
@@ -64,7 +66,7 @@ async function loadAll() {
     renderStats(data);
     renderBudget(data);
     renderApiBreakdown(data);
-    await Promise.all([loadHistory(), loadUsers()]);
+    await Promise.all([loadHistory(), loadUsers(), loadFeedback(), loadPerformance()]);
     showToast('Dashboard refreshed');
   } catch (e) {
     showToast('Refresh failed', 'error');
@@ -322,4 +324,224 @@ function escHtml(s) {
   const d = document.createElement('div');
   d.textContent = s || '';
   return d.innerHTML;
+}
+
+// ── User Feedback ──────────────────────────────────────
+async function loadFeedback() {
+  try {
+    const res = await fetch('/api/admin/feedback', { headers: Auth.headers() });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderFeedbackStats(data);
+    renderFeedbackByCondition(data.by_condition || []);
+    renderFeedbackTable(data.recent || []);
+  } catch (e) {
+    console.error('Failed to load feedback:', e);
+  }
+}
+
+function renderFeedbackStats(data) {
+  const o = data.overall || {};
+  const total = o.total_reviews || 0;
+  const avg = o.avg_rating ? o.avg_rating.toFixed(1) : '—';
+  const helpfulYes = o.helpful_yes || 0;
+  const helpfulNo = o.helpful_no || 0;
+  const helpfulPct = (helpfulYes + helpfulNo) > 0
+    ? Math.round(helpfulYes / (helpfulYes + helpfulNo) * 100) : 0;
+
+  document.getElementById('feedback-stats-row').innerHTML = `
+    <div class="stat-card purple">
+      <div class="stat-icon purple">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
+      <div class="stat-label">Total Reviews</div>
+      <div class="stat-value">${total}</div>
+      <div class="stat-sub">feedback submissions</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-icon amber">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      </div>
+      <div class="stat-label">Average Rating</div>
+      <div class="stat-value">${avg} <span style="font-size:.9rem;color:var(--muted-fg)">/ 5</span></div>
+      <div class="stat-sub">star rating average</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon green">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M3 14h4"/>
+        </svg>
+      </div>
+      <div class="stat-label">Helpful Rate</div>
+      <div class="stat-value">${helpfulPct}%</div>
+      <div class="stat-sub">${helpfulYes} yes · ${helpfulNo} no</div>
+    </div>
+  `;
+}
+
+function renderFeedbackByCondition(conditions) {
+  const el = document.getElementById('feedback-by-condition');
+  if (!conditions.length) {
+    el.innerHTML = '';
+    return;
+  }
+  let html = '<h3 style="font-size:1rem;margin-bottom:.75rem;color:var(--foreground)">Ratings by Condition</h3><div style="display:flex;flex-wrap:wrap;gap:.75rem">';
+  conditions.forEach(c => {
+    const stars = c.avg_rating ? c.avg_rating.toFixed(1) : '—';
+    html += `
+      <div style="padding:.6rem 1rem;background:rgba(124,58,237,.03);border-radius:.75rem;border:1px solid rgba(124,58,237,.1)">
+        <span style="font-weight:700;font-size:.85rem">${escHtml(c.condition)}</span>
+        <span style="margin-left:.5rem;color:var(--muted-fg);font-size:.8rem">${stars} ★ (${c.reviews} reviews)</span>
+      </div>`;
+  });
+  el.innerHTML = html + '</div>';
+}
+
+function renderFeedbackTable(recent) {
+  const tbody = document.getElementById('feedback-tbody');
+  if (!recent.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>No feedback yet</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = recent.map(r => {
+    const date = r.created_at ? new Date(r.created_at).toLocaleDateString() : '—';
+    const stars = r.star_rating ? '★'.repeat(r.star_rating) + '☆'.repeat(5 - r.star_rating) : '—';
+    const helpful = r.is_helpful === 1 ? '👍' : r.is_helpful === 0 ? '👎' : '—';
+    return `<tr>
+      <td style="font-weight:600">${escHtml(r.story_title || '—')}</td>
+      <td><span class="badge badge-purple">${escHtml(r.condition || '—')}</span></td>
+      <td style="color:#f59e0b;letter-spacing:1px">${stars}</td>
+      <td>${r.emoji_reaction || '—'}</td>
+      <td>${helpful}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.comment || '—')}</td>
+      <td>${date}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Performance Monitoring ─────────────────────────────
+async function loadPerformance() {
+  const btn = document.getElementById('perf-refresh-btn');
+  if (btn) btn.classList.add('loading');
+  try {
+    const res = await fetch('/api/admin/stats', { headers: Auth.headers() });
+    if (!res.ok) return;
+    const data = await res.json();
+    const perf = data.performance || {};
+    renderPerfStats(perf);
+    renderPerfGeneration(perf.generation_avg || {});
+    renderPerfErrors(perf.errors || {});
+    renderPerfRecent(perf.recent_generations || []);
+  } catch (e) {
+    console.error('Failed to load performance:', e);
+  } finally {
+    if (btn) btn.classList.remove('loading');
+  }
+}
+
+function renderPerfStats(perf) {
+  document.getElementById('perf-stats-row').innerHTML = `
+    <div class="stat-card green">
+      <div class="stat-icon green">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <div class="stat-label">Uptime</div>
+      <div class="stat-value">${escHtml(perf.uptime_human || '—')}</div>
+      <div class="stat-sub">${(perf.uptime_seconds || 0).toLocaleString()}s total</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-icon blue">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+      </div>
+      <div class="stat-label">Memory Usage</div>
+      <div class="stat-value">${perf.memory_mb || 0} MB</div>
+      <div class="stat-sub">Python ${escHtml(perf.python_version || '—')}</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-icon purple">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      </div>
+      <div class="stat-label">Total Requests</div>
+      <div class="stat-value">${(perf.total_requests || 0).toLocaleString()}</div>
+      <div class="stat-sub">since server start</div>
+    </div>
+    <div class="stat-card ${perf.error_rate_pct > 5 ? 'rose' : 'amber'}">
+      <div class="stat-icon ${perf.error_rate_pct > 5 ? 'rose' : 'amber'}">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <div class="stat-label">Error Rate</div>
+      <div class="stat-value">${perf.error_rate_pct || 0}%</div>
+      <div class="stat-sub">${(perf.errors || {}).total || 0} errors total</div>
+    </div>
+  `;
+}
+
+function renderPerfGeneration(avg) {
+  const el = document.getElementById('perf-gen-stats');
+  if (!avg.sample_size) {
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem"><p>No generation data yet</p></div>';
+    return;
+  }
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+      <div style="padding:1rem;background:rgba(59,130,246,.05);border-radius:.75rem;text-align:center">
+        <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--muted-fg);margin-bottom:.25rem">Gemini</div>
+        <div style="font-size:1.5rem;font-weight:700;color:#3b82f6">${avg.gemini_ms}ms</div>
+      </div>
+      <div style="padding:1rem;background:rgba(124,58,237,.05);border-radius:.75rem;text-align:center">
+        <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--muted-fg);margin-bottom:.25rem">Flux</div>
+        <div style="font-size:1.5rem;font-weight:700;color:#7c3aed">${avg.flux_ms}ms</div>
+      </div>
+      <div style="padding:1rem;background:rgba(16,185,129,.05);border-radius:.75rem;text-align:center">
+        <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--muted-fg);margin-bottom:.25rem">Total</div>
+        <div style="font-size:1.5rem;font-weight:700;color:#10b981">${avg.total_ms}ms</div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:.5rem;font-size:.8rem;color:var(--muted-fg)">Based on ${avg.sample_size} samples</div>
+  `;
+}
+
+function renderPerfErrors(errors) {
+  const el = document.getElementById('perf-errors');
+  const byType = errors.by_type || {};
+  const types = Object.entries(byType);
+  if (!types.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem"><p>No errors recorded</p></div>';
+    return;
+  }
+  el.innerHTML = types.map(([type, count]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:rgba(239,68,68,.03);border-radius:.5rem;margin-bottom:.5rem">
+      <span style="font-weight:600;font-size:.85rem">${escHtml(type)}</span>
+      <span class="badge badge-danger">${count}</span>
+    </div>
+  `).join('');
+}
+
+function renderPerfRecent(recent) {
+  const tbody = document.getElementById('perf-recent-tbody');
+  if (!recent.length) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No recent generations</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = recent.map(r => {
+    const time = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString() : '—';
+    return `<tr>
+      <td>${r.gemini_ms}ms</td>
+      <td>${r.flux_ms}ms</td>
+      <td style="font-weight:700">${r.total_ms}ms</td>
+      <td>${time}</td>
+    </tr>`;
+  }).join('');
 }

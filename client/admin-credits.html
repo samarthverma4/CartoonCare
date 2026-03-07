@@ -138,6 +138,110 @@
     </div>
   </div>
 
+  <!-- ── User Feedback ────────────────────────────────── -->
+  <div class="dashboard-section" id="feedback-section">
+    <div class="section-header">
+      <div>
+        <h2>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="vertical-align:middle;color:var(--primary);margin-right:.4rem">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          User Feedback
+        </h2>
+        <p class="section-desc">Aggregated story feedback from users</p>
+      </div>
+    </div>
+    <div class="stats-row" id="feedback-stats-row">
+      <div class="dash-skeleton"></div>
+      <div class="dash-skeleton"></div>
+      <div class="dash-skeleton"></div>
+    </div>
+    <div id="feedback-by-condition" style="margin-bottom:1.5rem"></div>
+    <div class="data-table-wrap">
+      <table class="data-table" id="feedback-table">
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Condition</th>
+            <th>Rating</th>
+            <th>Emoji</th>
+            <th>Helpful</th>
+            <th>Comment</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="feedback-tbody">
+          <tr><td colspan="7"><div class="dash-skeleton" style="height:60px"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Performance Monitoring ──────────────────────── -->
+  <div class="dashboard-section" id="perf-section">
+    <div class="section-header">
+      <div>
+        <h2>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="vertical-align:middle;color:var(--primary);margin-right:.4rem">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          Performance Monitoring
+        </h2>
+        <p class="section-desc">Server health, generation times, and error tracking</p>
+      </div>
+      <button class="btn-refresh" id="perf-refresh-btn" onclick="loadPerformance()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+    <div class="stats-row" id="perf-stats-row">
+      <div class="dash-skeleton"></div>
+      <div class="dash-skeleton"></div>
+      <div class="dash-skeleton"></div>
+      <div class="dash-skeleton"></div>
+    </div>
+    <div class="dashboard-grid-2">
+      <div id="perf-gen-section">
+        <h3 style="font-size:1rem;margin-bottom:.75rem;color:var(--foreground)">Generation Time Averages</h3>
+        <div id="perf-gen-stats">
+          <div class="dash-skeleton" style="height:100px"></div>
+        </div>
+      </div>
+      <div id="perf-errors-section">
+        <h3 style="font-size:1rem;margin-bottom:.75rem;color:var(--foreground)">Error Breakdown</h3>
+        <div id="perf-errors">
+          <div class="dash-skeleton" style="height:100px"></div>
+        </div>
+      </div>
+    </div>
+    <div id="perf-recent-section" style="margin-top:1.5rem">
+      <h3 style="font-size:1rem;margin-bottom:.75rem;color:var(--foreground)">Recent Generations</h3>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Gemini (ms)</th>
+              <th>Flux (ms)</th>
+              <th>Total (ms)</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="perf-recent-tbody">
+            <tr><td colspan="4"><div class="dash-skeleton" style="height:60px"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Configuration Panel ─────────────────────────── -->
   <div class="dashboard-section" id="config-section">
     <h2>Credit Configuration</h2>

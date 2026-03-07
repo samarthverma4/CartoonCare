@@ -183,6 +183,23 @@ def init_db():
             )
         ''')
 
+        # User feedback (ratings, emoji reactions, text comments)
+        _execute(conn, '''
+            CREATE TABLE IF NOT EXISTS user_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id INTEGER NOT NULL,
+                user_id INTEGER,
+                star_rating INTEGER,
+                emoji_reaction TEXT,
+                is_helpful INTEGER,
+                comment TEXT,
+                page_number INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        ''')
+
         # API usage log table
         _execute(conn, '''
             CREATE TABLE IF NOT EXISTS api_logs (
@@ -362,7 +379,7 @@ def get_child(child_id: int) -> Optional[dict]:
         return row_to_child(row) if row else None
 
 
-def update_child(child_id: int, **kwargs) -> Optional[dict]:
+def update_child(child_id: int, user_id: Optional[int] = None, **kwargs) -> Optional[dict]:
     # Whitelist of allowed column names — prevents SQL injection via key names
     ALLOWED_COLUMNS = {'name', 'age', 'gender', 'conditions', 'preferences'}
     updates = {k: v for k, v in kwargs.items() if k in ALLOWED_COLUMNS}
@@ -376,17 +393,33 @@ def update_child(child_id: int, **kwargs) -> Optional[dict]:
 
     with get_db() as conn:
         # Safe: keys are validated against ALLOWED_COLUMNS above
-        set_clause = ', '.join(f'{k} = ?' for k in updates.keys())
-        values = list(updates.values()) + [child_id]
-        _execute(conn, f'UPDATE children SET {set_clause} WHERE id = ?', values)
-        row = _fetchone(conn, 'SELECT * FROM children WHERE id = ?', (child_id,))
+        if user_id:
+            set_clause = ', '.join(f'{k} = ?' for k in updates.keys())
+            values = list(updates.values()) + [child_id, user_id]
+            _execute(conn, f'UPDATE children SET {set_clause} WHERE id = ? AND user_id = ?', values)
+            row = _fetchone(conn, 'SELECT * FROM children WHERE id = ? AND user_id = ?', (child_id, user_id))
+        else:
+            set_clause = ', '.join(f'{k} = ?' for k in updates.keys())
+            values = list(updates.values()) + [child_id]
+            _execute(conn, f'UPDATE children SET {set_clause} WHERE id = ?', values)
+            row = _fetchone(conn, 'SELECT * FROM children WHERE id = ?', (child_id,))
         return row_to_child(row) if row else None
 
 
-def delete_child(child_id: int) -> bool:
+def delete_child(child_id: int, user_id: Optional[int] = None) -> bool:
     with get_db() as conn:
-        cur = _execute(conn, 'DELETE FROM children WHERE id = ?', (child_id,))
+        if user_id:
+            cur = _execute(conn, 'DELETE FROM children WHERE id = ? AND user_id = ?', (child_id, user_id))
+        else:
+            cur = _execute(conn, 'DELETE FROM children WHERE id = ?', (child_id,))
         return cur.rowcount > 0
+
+
+def verify_child_owner(child_id: int, user_id: int) -> bool:
+    """Check if a child profile belongs to the given user."""
+    with get_db() as conn:
+        row = _fetchone(conn, 'SELECT id FROM children WHERE id = ? AND user_id = ?', (child_id, user_id))
+        return row is not None
 
 
 # ── Story operations (extended) ──────────────────────────────────────
@@ -409,9 +442,12 @@ def create_story(child_name: str, age: int, gender: str, condition: str,
         return row_to_story(rows[0]) if rows else None
 
 
-def get_story(story_id: int) -> Optional[dict]:
+def get_story(story_id: int, user_id: Optional[int] = None) -> Optional[dict]:
     with get_db() as conn:
-        row = _fetchone(conn, 'SELECT * FROM stories WHERE id = ?', (story_id,))
+        if user_id:
+            row = _fetchone(conn, 'SELECT * FROM stories WHERE id = ? AND user_id = ?', (story_id, user_id))
+        else:
+            row = _fetchone(conn, 'SELECT * FROM stories WHERE id = ?', (story_id,))
         return row_to_story(row) if row else None
 
 
@@ -441,9 +477,12 @@ def get_favorite_stories(user_id: Optional[int] = None) -> list:
         return [row_to_story(r) for r in rows]
 
 
-def toggle_favorite(story_id: int) -> Optional[dict]:
+def toggle_favorite(story_id: int, user_id: Optional[int] = None) -> Optional[dict]:
     with get_db() as conn:
-        row = _fetchone(conn, 'SELECT * FROM stories WHERE id = ?', (story_id,))
+        if user_id:
+            row = _fetchone(conn, 'SELECT * FROM stories WHERE id = ? AND user_id = ?', (story_id, user_id))
+        else:
+            row = _fetchone(conn, 'SELECT * FROM stories WHERE id = ?', (story_id,))
         if not row:
             return None
         d = _row_to_dict(row)
@@ -455,9 +494,12 @@ def toggle_favorite(story_id: int) -> Optional[dict]:
         return row_to_story(row)
 
 
-def delete_story(story_id: int) -> bool:
+def delete_story(story_id: int, user_id: Optional[int] = None) -> bool:
     with get_db() as conn:
-        cur = _execute(conn, 'DELETE FROM stories WHERE id = ?', (story_id,))
+        if user_id:
+            cur = _execute(conn, 'DELETE FROM stories WHERE id = ? AND user_id = ?', (story_id, user_id))
+        else:
+            cur = _execute(conn, 'DELETE FROM stories WHERE id = ?', (story_id,))
         return cur.rowcount > 0
 
 
@@ -786,3 +828,87 @@ def get_all_users_summary() -> list:
                ORDER BY u.id DESC'''
         )
         return [_row_to_dict(r) for r in rows]
+
+
+# ── User feedback operations ─────────────────────────────────────────
+
+def submit_user_feedback(story_id: int = 0, user_id: Optional[int] = None,
+                         star_rating: Optional[int] = None,
+                         emoji_reaction: Optional[str] = None,
+                         is_helpful: Optional[bool] = None,
+                         comment: Optional[str] = None,
+                         page_number: Optional[int] = None) -> Optional[dict]:
+    """Submit user feedback for a story."""
+    with get_db() as conn:
+        helpful_val = None
+        if is_helpful is not None:
+            helpful_val = 1 if is_helpful else 0
+        _execute(conn,
+            '''INSERT INTO user_feedback
+               (story_id, user_id, star_rating, emoji_reaction, is_helpful, comment, page_number)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (story_id, user_id, star_rating, emoji_reaction, helpful_val, comment, page_number)
+        )
+        rows = _fetchall(conn,
+            'SELECT * FROM user_feedback WHERE story_id = ? ORDER BY id DESC LIMIT 1',
+            (story_id,)
+        )
+        return _row_to_dict(rows[0]) if rows else None
+
+
+def get_story_feedback_summary(story_id: int) -> dict:
+    """Get aggregated feedback for a single story."""
+    with get_db() as conn:
+        row = _fetchone(conn,
+            '''SELECT COUNT(*) as total_reviews,
+                      AVG(star_rating) as avg_rating,
+                      SUM(CASE WHEN is_helpful = 1 THEN 1 ELSE 0 END) as helpful_yes,
+                      SUM(CASE WHEN is_helpful = 0 THEN 1 ELSE 0 END) as helpful_no
+               FROM user_feedback WHERE story_id = ?''',
+            (story_id,)
+        )
+        emoji_rows = _fetchall(conn,
+            '''SELECT emoji_reaction, COUNT(*) as count
+               FROM user_feedback WHERE story_id = ? AND emoji_reaction IS NOT NULL
+               GROUP BY emoji_reaction ORDER BY count DESC''',
+            (story_id,)
+        )
+        d = _row_to_dict(row) or {}
+        d['emoji_counts'] = {_row_to_dict(r)['emoji_reaction']: _row_to_dict(r)['count']
+                             for r in emoji_rows if _row_to_dict(r)}
+        return d
+
+
+def get_admin_feedback_stats() -> dict:
+    """Get aggregated feedback stats for admin dashboard."""
+    with get_db() as conn:
+        overall = _fetchone(conn,
+            '''SELECT COUNT(*) as total_reviews,
+                      AVG(star_rating) as avg_rating,
+                      SUM(CASE WHEN is_helpful = 1 THEN 1 ELSE 0 END) as helpful_yes,
+                      SUM(CASE WHEN is_helpful = 0 THEN 1 ELSE 0 END) as helpful_no
+               FROM user_feedback'''
+        )
+        by_condition = _fetchall(conn,
+            '''SELECT s.condition,
+                      COUNT(uf.id) as reviews,
+                      AVG(uf.star_rating) as avg_rating
+               FROM user_feedback uf
+               JOIN stories s ON uf.story_id = s.id
+               WHERE uf.star_rating IS NOT NULL
+               GROUP BY s.condition
+               ORDER BY avg_rating DESC'''
+        )
+        recent = _fetchall(conn,
+            '''SELECT uf.*,
+                      COALESCE(s.story_title, 'Overall Platform') as story_title,
+                      COALESCE(s.condition, 'General') as condition
+               FROM user_feedback uf
+               LEFT JOIN stories s ON uf.story_id = s.id AND uf.story_id != 0
+               ORDER BY uf.id DESC LIMIT 20'''
+        )
+        return {
+            'overall': _row_to_dict(overall) or {},
+            'by_condition': [_row_to_dict(r) for r in by_condition],
+            'recent': [_row_to_dict(r) for r in recent],
+        }

@@ -27,3 +27,8 @@ server_err.log
 # Editor
 .vscode/
 *.code-workspace
+
+# Reports & debug scripts (not source code)
+*.pdf
+generate_report.py
+_debug_*.py

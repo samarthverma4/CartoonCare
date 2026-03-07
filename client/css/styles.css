@@ -741,6 +741,55 @@ button, input, select, textarea {
 .toast.success { border-color: rgba(124,58,237,.3); color: var(--primary); }
 @keyframes toastIn { from { opacity: 0; transform: translateX(2rem); } to { opacity: 1; transform: translateX(0); } }
 
+/* Settings toggle & panel */
+.settings-toggle {
+  display: flex; align-items: center; gap: .5rem;
+  width: 100%; padding: .875rem 1rem;
+  border: 2px solid var(--border); border-radius: 1rem;
+  background: rgba(255,255,255,.6); cursor: pointer;
+  font-family: var(--font-body); font-weight: 700; font-size: .9rem;
+  color: var(--muted-fg); transition: all .2s;
+}
+.settings-toggle:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+.settings-toggle.open { border-color: var(--primary); color: var(--primary); }
+.settings-toggle .chevron { margin-left: auto; transition: transform .25s; }
+.settings-toggle.open .chevron { transform: rotate(180deg); }
+.settings-panel { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+.settings-panel .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 640px) { .settings-panel .form-grid-2 { grid-template-columns: 1fr; } }
+
+/* Feedback system */
+.feedback-box { max-width: 30rem; text-align: left; }
+.feedback-section { margin-bottom: 1rem; }
+.feedback-label { font-size: .85rem; font-weight: 700; color: var(--foreground); display: block; margin-bottom: .4rem; }
+
+.star-rating { display: flex; gap: .25rem; }
+.star-btn {
+  background: none; border: none; font-size: 2rem; cursor: pointer;
+  color: var(--muted); transition: color .15s, transform .15s;
+  padding: 0 .1rem; line-height: 1;
+}
+.star-btn:hover, .star-btn.active { color: #f59e0b; transform: scale(1.15); }
+
+.emoji-rating { display: flex; gap: .5rem; }
+.emoji-btn {
+  font-size: 2rem; background: none; border: 2px solid transparent;
+  border-radius: .75rem; padding: .25rem .5rem; cursor: pointer;
+  transition: all .15s;
+}
+.emoji-btn:hover { border-color: var(--border); background: var(--primary-light); }
+.emoji-btn.active { border-color: var(--primary); background: var(--primary-light); transform: scale(1.1); }
+
+.helpful-btns { display: flex; gap: .5rem; }
+.helpful-btn {
+  padding: .5rem 1.25rem; border-radius: 9999px;
+  border: 2px solid var(--border); background: #fff;
+  font-weight: 700; font-size: .9rem; cursor: pointer;
+  font-family: var(--font-body); transition: all .15s;
+}
+.helpful-btn:hover { border-color: var(--primary); background: var(--primary-light); }
+.helpful-btn.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+
 /* ── ─────────────────── AUTH PAGE ──────────────────────── */
 
 .auth-bg {
@@ -1055,3 +1104,5 @@ button, input, select, textarea {
   .nav-username { display: none; }
   .profile-dropdown { right: -1rem; min-width: 14rem; }
 }
+
+
