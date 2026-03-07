@@ -17,6 +17,10 @@ CartoonCare turns scary medical experiences into magical adventures. Parents ent
 - ⭐ **Favorites** — Save and revisit your favorite stories
 - 🗑️ **Story Library** — Manage all created stories from the home page
 - ☁️ **Cloud Storage** — Optional S3 storage with presigned URLs for generated images
+- 🎛️ **Custom Story Settings** — Choose story length (1/3/5 pages), tone (funny/adventurous/calming), theme (superhero/space/underwater/jungle), villain type, ending style, illustration style, and reading level
+- 💬 **Help & Support** — Dedicated feedback page accessible from the user dropdown; rate stories with stars, emoji reactions, and comments
+- 📊 **Performance Monitoring** — Admin dashboard showing uptime, memory usage, error rates, and AI generation time breakdowns (Gemini vs Flux)
+- 🔐 **User Data Isolation** — Each user can only see and manage their own stories and children profiles
 
 ---
 
@@ -48,6 +52,7 @@ cartooncare/
 │   ├── login.html              # Login / Signup page
 │   ├── admin-credits.html      # Admin credit dashboard
 │   ├── my-credits.html         # User credit dashboard
+│   ├── feedback.html           # Help & Support — user feedback page
 │   ├── css/
 │   │   ├── styles.css          # Full design system + auth styles
 │   │   └── dashboard.css       # Credit dashboard styles
@@ -58,6 +63,7 @@ cartooncare/
 │       ├── auth.js             # Login/signup form handling, token management
 │       ├── admin-credits.js    # Admin credit management
 │       ├── my-credits.js       # User credit view
+│       ├── feedback.js          # Feedback page logic (story ratings, overall platform feedback)
 │       └── nav-profile.js      # Dynamic nav bar (avatar + logout)
 ├── server/
 │   ├── main.py                 # Flask app factory, middleware, static serving
@@ -75,7 +81,8 @@ cartooncare/
 ├── tests/
 │   ├── conftest.py             # Shared fixtures (app, client, auth_header)
 │   ├── test_auth.py            # 16 auth tests (password, JWT, routes)
-│   └── test_content_safety.py  # 9 content safety tests
+│   ├── test_content_safety.py  # 9 content safety tests
+│   └── test_data_isolation.py  # 12 data isolation tests (story + child ownership)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml              # Lint (flake8) + test (pytest) on push/PR
@@ -137,7 +144,7 @@ Open **http://localhost:5002** in your browser.
 
 ## 🧪 Testing
 
-The project includes 26 unit and integration tests covering authentication, JWT validation, and content safety.
+The project includes 38 unit and integration tests covering authentication, JWT validation, content safety, and user data isolation.
 
 ```bash
 # Run all tests
@@ -150,6 +157,7 @@ python -m pytest tests/ -v --cov=server --cov-report=term-missing
 **Test suites:**
 - `test_auth.py` — Password hashing, JWT create/decode/tamper, registration validation, route-level register/login/protected endpoints
 - `test_content_safety.py` — Input validation (name, age, blocked content, prompt injection), output moderation (blocked terms, age-appropriate language)
+- `test_data_isolation.py` — User data isolation — verifies User A cannot see, delete, or modify User B's stories or children profiles
 
 CI runs automatically via GitHub Actions on every push and pull request (`.github/workflows/ci.yml`).
 
@@ -213,6 +221,10 @@ All responses include hardened headers via an `after_request` handler in `main.p
 
 Replaced wildcard `*` with explicit allowed origins read from the `CORS_ALLOWED_ORIGINS` environment variable (comma-separated). Defaults to `http://localhost:5000,http://127.0.0.1:5000` for local development. Set your production domain in `.env`.
 
+### User Data Isolation
+
+All story and children endpoints enforce ownership checks. Every request extracts `user_id` from the JWT token and filters DB queries accordingly. Attempting to access another user's data returns `403 Forbidden`.
+
 ---
 
 ## 🧠 How It Works
@@ -223,6 +235,43 @@ Replaced wildcard `*` with explicit allowed origins read from the `CORS_ALLOWED_
 4. **Flux 2 Pro** generates a vivid illustration for each page (with automatic retry on timeout)
 5. Story is saved to the database and images stored locally or on S3
 6. Parent can **narrate, translate, favorite, or delete** the story anytime
+
+---
+
+## 🎛️ Custom Story Settings
+
+When creating a story, parents can customize:
+
+| Setting | Options |
+|---------|---------|
+| Story Length | Short (1 page), Medium (3 pages), Long (5 pages) |
+| Tone | Funny, Adventurous, Calming, Educational |
+| Theme | Superhero, Space, Underwater, Jungle |
+| Villain Type | Monster, Storm, Puzzle, Shadow |
+| Ending Style | Triumphant, Peaceful, Cliffhanger |
+| Illustration Style | Default, Watercolor, Comic Book, Pixel Art |
+| Reading Level | Toddler, Early Reader, Older Child |
+
+All settings are optional — defaults are used if not specified.
+
+---
+
+## 📊 Admin Dashboard
+
+Admin users can access the dashboard at `/admin-credits`.
+
+**User Feedback:**
+- Total reviews, average star rating, helpful rate
+- Ratings breakdown by medical condition
+- Recent feedback table with story title, emoji, comment, and date
+
+**Performance Monitoring:**
+- Server uptime and memory usage
+- Total requests and error rate
+- AI generation time averages (Gemini vs Flux separately)
+- Recent generation history
+
+To create an admin account, set `is_admin = 1` for the user in the database.
 
 ---
 
