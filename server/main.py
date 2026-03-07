@@ -125,6 +125,7 @@ def serve_html(filename):
     html = html.replace('/js/nav-profile.js"', f'/js/nav-profile.js?v={BUILD_TS}"')
     html = html.replace('/js/admin-credits.js"', f'/js/admin-credits.js?v={BUILD_TS}"')
     html = html.replace('/js/my-credits.js"', f'/js/my-credits.js?v={BUILD_TS}"')
+    html = html.replace('/js/feedback.js"', f'/js/feedback.js?v={BUILD_TS}"')
     return Response(html, mimetype='text/html')
 
 
@@ -173,6 +174,11 @@ def serve_my_credits():
     """Serve the user credit dashboard."""
     return serve_html('my-credits.html')
 
+@app.route('/feedback')
+def serve_feedback():
+    """Serve the help & support / feedback page."""
+    return serve_html('feedback.html')
+
 @app.route('/css/<path:filename>')
 def serve_css(filename):
     """Serve CSS assets from the client directory."""
@@ -187,7 +193,6 @@ def serve_js(filename):
 def serve_image(filename):
     """Serve generated story images."""
     return send_from_directory(IMAGES_DIR, filename)
-
 
 # ── Entry point ───────────────────────────────────────────────────────
 
