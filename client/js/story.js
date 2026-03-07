@@ -127,7 +127,10 @@ function updateNavBtns() {
         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 5v14M5 12h14"/>
       </svg>`;
-    next.onclick = () => window.location.href = '/create';
+    next.onclick = () => {
+      if (!feedbackSubmitted) { showFeedbackModal(); }
+      else { window.location.href = '/create'; }
+    };
   } else {
     next.innerHTML = `Next
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
