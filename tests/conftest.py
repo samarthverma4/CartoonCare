@@ -31,6 +31,10 @@ def app(tmp_path):
 
     flask_app.config['TESTING'] = True
 
+    # Disable rate limiting for tests
+    from main import limiter
+    limiter.enabled = False
+
     # Initialise a clean database for the test
     db.init_db()
 
